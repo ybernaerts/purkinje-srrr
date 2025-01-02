@@ -4,7 +4,7 @@ import warnings
 import pylab as plt
 
 import glmnet_python
-from glmnet import glmnet
+from glmnet_py import glmnet
 
 import rnaseqTools
 
