@@ -3,7 +3,7 @@ import time
 import warnings
 import pylab as plt
 
-import glmnet_python
+#import glmnet_python
 from glmnet_py import glmnet
 
 import rnaseqTools
