@@ -2,5 +2,4 @@ numpy
 pandas
 seaborn
 matplotlib
-glmnet_py
-scipy==1.11.0 # otherwise glmnet_py will not work
+sklearn

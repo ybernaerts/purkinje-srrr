@@ -2,9 +2,7 @@ import numpy as np
 import time
 import warnings
 import pylab as plt
-
-#import glmnet_python
-from glmnet_py import glmnet
+from sklearn.linear_model import ElasticNet
 
 import rnaseqTools
 
@@ -12,13 +10,13 @@ import rnaseqTools
 ###################################################
 # Elastic net reduced-rank regression
 
-def elastic_rrr(X, Y, rank=2, lambdau=1, alpha=0.5, max_iter=100, verbose=0,
+def elastic_rrr(X, Y, rank=2, alpha=1, l1_ratio=0.5, max_iter=100, verbose=0,
                 sparsity='row-wise'):
 
     # in the pure ridge case, analytic solution is available:
-    if alpha == 0:
+    if l1_ratio == 0:
          U,s,V = np.linalg.svd(X, full_matrices=False)
-         B = V.T @ np.diag(s/(s**2 + lambdau*X.shape[0])) @ U.T @ Y
+         B = V.T @ np.diag(s/(s**2 + alpha*X.shape[0])) @ U.T @ Y
          U,s,V = np.linalg.svd(X@B, full_matrices=False)
          w = B @ V.T[:,:rank]
          v = V.T[:,:rank]
@@ -30,6 +28,8 @@ def elastic_rrr(X, Y, rank=2, lambdau=1, alpha=0.5, max_iter=100, verbose=0,
 
          return (w,v)
 
+    elastic_net = ElasticNet(alpha=alpha, l1_ratio=l1_ratio, fit_intercept=False, max_iter=max_iter)
+
     # initialize with PLS direction
     _,_,v = np.linalg.svd(X.T @ Y, full_matrices=False)
     v = v[:rank,:].T
@@ -38,19 +38,15 @@ def elastic_rrr(X, Y, rank=2, lambdau=1, alpha=0.5, max_iter=100, verbose=0,
     
     for iter in range(max_iter):
         if rank == 1:
-            w = glmnet(x = X.copy(), y = (Y @ v).copy(), alpha = alpha, lambdau = np.array([lambdau]), 
-                       standardize = False, intr = False)['beta']
+            w = elastic_net.fit(X.copy(), (Y @ v).copy()).coef_
         else: 
             if sparsity=='row-wise':
-                w = glmnet(x = X.copy(), y = (Y @ v).copy(), alpha = alpha, lambdau = np.array([lambdau]), 
-                           family = "mgaussian", standardize = False, intr = False,
-                           standardize_resp = False)['beta']
+                w = elastic_net.fit(X.copy(), (Y @ v).copy()).coef_.T
             else:
                 w = []
                 for i in range(rank):
-                    w.append(glmnet(x = X.copy(), y = (Y @ v[:,i]).copy(), alpha = alpha, lambdau = np.array([lambdau]), 
-                             standardize = False, intr = False, standardize_resp = False)['beta'])
-            w = np.concatenate(w, axis=1)
+                    w.append(elastic_net.fit(X.copy(), (Y @ v[:,i]).copy()).coef_[:,np.newaxis])
+                w = np.concatenate(w, axis=1)
                 
         if np.all(w==0):
             v = v * 0
@@ -264,15 +260,15 @@ def dimensionality(X, Y, nrep = 100, seed = 42, axes=None, figsize=(9,3)):
     
 ###################################################
 # Cross-validation for elastic net reduced-rank regression
-def elastic_rrr_cv(X, Y, alphas = np.array([.2, .5, .9]), lambdas = np.array([.01, .1, 1]), 
+def elastic_rrr_cv(X, Y, l1_ratios = np.array([.2, .5, .9]), alphas = np.array([.01, .1, 1]), 
                    reps=1, folds=10, rank=2, seed=42, sparsity='row-wise', lambdaRelaxed=None,
                    preprocess=None):
     n = X.shape[0]
-    r2 = np.zeros((folds, reps, len(lambdas), len(alphas))) * np.nan
-    r2_relaxed = np.zeros((folds, reps, len(lambdas), len(alphas))) * np.nan
-    corrs = np.zeros((folds, reps, len(lambdas), len(alphas), rank)) * np.nan
-    corrs_relaxed = np.zeros((folds, reps, len(lambdas), len(alphas), rank)) * np.nan
-    nonzero = np.zeros((folds, reps, len(lambdas), len(alphas))) * np.nan
+    r2 = np.zeros((folds, reps, len(alphas), len(l1_ratios))) * np.nan
+    r2_relaxed = np.zeros((folds, reps, len(alphas), len(l1_ratios))) * np.nan
+    corrs = np.zeros((folds, reps, len(alphas), len(l1_ratios), rank)) * np.nan
+    corrs_relaxed = np.zeros((folds, reps, len(alphas), len(l1_ratios), rank)) * np.nan
+    nonzero = np.zeros((folds, reps, len(alphas), len(l1_ratios))) * np.nan
 
     # CV repetitions
     np.random.seed(seed)
@@ -306,9 +302,9 @@ def elastic_rrr_cv(X, Y, alphas = np.array([.2, .5, .9]), lambdas = np.array([.0
             Ytest  -= Y_mean
             
             # loop over regularization parameters
-            for i,a in enumerate(lambdas):    
-                for j,b in enumerate(alphas):
-                    vx,vy = elastic_rrr(Xtrain, Ytrain, lambdau=a, alpha=b, rank=rank, sparsity=sparsity)
+            for i,a in enumerate(alphas):    
+                for j,b in enumerate(l1_ratios):
+                    vx,vy = elastic_rrr(Xtrain, Ytrain, alpha=a, l1_ratio=b, rank=rank, sparsity=sparsity)
                     
                     nz = np.sum(np.abs(vx), axis=1) != 0
                     if np.sum(nz) < rank:
@@ -324,9 +320,9 @@ def elastic_rrr_cv(X, Y, alphas = np.array([.2, .5, .9]), lambdas = np.array([.0
                         
                     # Relaxation
                     if lambdaRelaxed:
-                        vxr,vyr = elastic_rrr(Xtrain[:,nz], Ytrain, lambdau=lambdaRelaxed, alpha=0, rank=rank, sparsity=sparsity)
+                        vxr,vyr = elastic_rrr(Xtrain[:,nz], Ytrain, lambdau=lambdaRelaxed, l1_ratio=0, rank=rank, sparsity=sparsity)
                     else:
-                        vxr,vyr = elastic_rrr(Xtrain[:,nz], Ytrain, lambdau=a, alpha=0, rank=rank, sparsity=sparsity)
+                        vxr,vyr = elastic_rrr(Xtrain[:,nz], Ytrain, alpha=a, l1_ratio=0, rank=rank, sparsity=sparsity)
                     if np.sum(nz)>=np.shape(vy)[1]:
                         vx[nz,:] = vxr
                         vy = vyr
@@ -355,13 +351,15 @@ def elastic_rrr_cv(X, Y, alphas = np.array([.2, .5, .9]), lambdas = np.array([.0
 
 ###################################################
 # Bootstrap selection for elastic net reduced-rank regression
-def elastic_rrr_bootstrap(X, Y, rank=2, lambdau = 1.5, alpha = .5, nrep = 100, seed=42):
+# Each repetition is a bootstrap sample, i.e. a random sample with replacement
+# (there can be copies of a datum in a bootstrap sample and some datums can be missing in it)
+def elastic_rrr_bootstrap(X, Y, rank=2, alpha = 1.5, l1_ratio = .5, nrep = 100, seed=42):
     np.random.seed(seed)
     ww = np.zeros((X.shape[1], nrep))
     for rep in range(nrep):
         print('.', end='')
         n = np.random.choice(X.shape[0], size = X.shape[0])
-        w,v = elastic_rrr(X[n,:], Y[n,:], rank = rank, lambdau = lambdau, alpha = alpha)
+        w,v = elastic_rrr(X[n,:], Y[n,:], rank = rank, alpha = alpha, l1_ratio = l1_ratio)
         ww[:,rep] = w[:,0]
     print(' ')
     bootCounts = np.sum(ww!=0, axis=1)/nrep
