@@ -1,2 +1,7 @@
 # ignore all files in the env directory
-/env/
+my_env/
+.ipynb_checkpoints/
+.requirements.txt.swp
+.gitignore.swp
+.DS_Store
+__pycache__/

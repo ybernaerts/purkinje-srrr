@@ -4,8 +4,6 @@ import warnings
 import pylab as plt
 from sklearn.linear_model import ElasticNet
 
-import rnaseqTools
-
 
 ###################################################
 # Elastic net reduced-rank regression
