@@ -36,7 +36,7 @@ def elastic_rrr(X, Y, rank=2, alpha=1, l1_ratio=0.5, max_iter=100, verbose=0,
     
     for iter in range(max_iter):
         if rank == 1:
-            w = elastic_net.fit(X.copy(), (Y @ v).copy()).coef_
+            w = elastic_net.fit(X.copy(), (Y @ v).copy()).coef_[:, np.newaxis]
         else: 
             if sparsity=='row-wise':
                 w = elastic_net.fit(X.copy(), (Y @ v).copy()).coef_.T
@@ -126,7 +126,7 @@ def bibiplot(X, Y, w, v,
         plt.sca(axes[0])
     
     if cellTypes.size == 0:
-        plt.scatter(Zx[:,0], Zx[:,1])
+        plt.scatter(Zx[:,0], Zx[:,1],c=range(X.shape[0]), cmap='viridis', s=s)
     else:
         for u in np.unique(cellTypes):
             if not cellTypeLabels:
@@ -162,7 +162,7 @@ def bibiplot(X, Y, w, v,
         plt.sca(axes[1])
         
     if cellTypes.size == 0:
-        plt.scatter(Zy[:,0], Zy[:,1], s=s)
+        plt.scatter(Zy[:,0], Zy[:,1], c=range(X.shape[0]), cmap='viridis', s=s)
     else:
         for u in np.unique(cellTypes):
             plt.scatter(Zy[cellTypes==u,0], Zy[cellTypes==u,1], color=cellTypeColors[u], s=s)
