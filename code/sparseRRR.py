@@ -423,8 +423,8 @@ def plot_cv_results(r2=None, r2_relaxed=None, nonzeros=None, corrs=None, corrs_r
 
 ####################################################
 # Nested CV
-def nested_cv(X, Y, lambdas, alphas, rank=2, nfolds=10, n_inner_folds=10,
-             target_n_genes=20):
+def nested_cv(X, Y, alphas, l1_ratios, rank=2, nfolds=10, n_inner_folds=10,
+             target_n_predictors=20):
 
     n = np.floor(X.shape[0]/nfolds).astype(int)
     r2s = np.zeros(nfolds)
@@ -447,20 +447,20 @@ def nested_cv(X, Y, lambdas, alphas, rank=2, nfolds=10, n_inner_folds=10,
 
         cvresults = elastic_rrr_cv(X[ind_train], Y[ind_train], rank=rank, 
                                              reps=1, folds=n_inner_folds, 
-                                             alphas=alphas, lambdas=lambdas)
+                                             alphas=alphas, l1_ratios=l1_ratios)
     
         r2, r2_relaxed, nonzero, corrs, corrs_relaxed = cvresults
-        lambd = np.nanargmin(np.abs(np.mean(nonzero, axis=0).squeeze() - target_n_genes), axis=0)
-        bestalpha = np.argmax(np.mean(r2_relaxed,axis=0).squeeze()[lambd, np.arange(alphas.size)])
+        alphad = np.nanargmin(np.abs(np.mean(nonzero, axis=0).squeeze() - target_n_predictors), axis=0)
+        bestl1ratio = np.argmax(np.mean(r2_relaxed,axis=0).squeeze()[alphad, np.arange(l1_ratios.size)])
     
         vx,vy = relaxed_elastic_rrr(X[ind_train], Y[ind_train], rank=2, 
-                      alpha=alphas[bestalpha], lambdau=lambdas[lambd[bestalpha]])
+                      l1_ratios=l1_ratios[bestl1ratio], alphas=alphas[alphad[bestl1ratio]])
     
         r2 = 1 - np.sum((Y[ind_test] - X[ind_test] @ vx @ vy.T)**2) / np.sum(Y[ind_test]**2)
         r2s[fold] = r2
 
-        print(f'Optimal alpha: {alphas[bestalpha]}, '
-              f'lambda to get {target_n_genes} genes: {lambdas[lambd[bestalpha]]:.1f}, '
+        print(f'Optimal alpha: {l1_ratios[bestl1ratio]}, '
+              f'lambda to get {target_n_predictors} predictors: {alphas[alphad[bestl1ratio]]:.1f}, '
               f'test R2 = {r2:.2f}')
     
     print(f'\nAverage test R2: {np.mean(r2s):.2f}\n')
