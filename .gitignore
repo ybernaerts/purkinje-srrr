@@ -4,4 +4,5 @@ my_env/
 .requirements.txt.swp
 .gitignore.swp
 .DS_Store
-__pycache__/
+figures/movie/*
+figures/see_gif.key
