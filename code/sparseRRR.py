@@ -365,7 +365,7 @@ def elastic_rrr_bootstrap(X, Y, rank=2, alpha = 1.5, l1_ratio = .5, nrep = 100, 
 
 ####################################################
 # Plot CV results
-def plot_cv_results(r2=None, r2_relaxed=None, nonzeros=None, corrs=None, corrs_relaxed=None, alphas=None, plot_var=False):
+def plot_cv_results(r2=None, r2_relaxed=None, nonzeros=None, corrs=None, corrs_relaxed=None, l1_ratios=None, plot_var=False):
     
     # suppressing "mean of empty slice" warnings
     with warnings.catch_warnings():
@@ -401,7 +401,7 @@ def plot_cv_results(r2=None, r2_relaxed=None, nonzeros=None, corrs=None, corrs_r
     plt.xscale('log')
     plt.xlabel('Number of non-zero predictors')
     plt.ylabel('Cross-validated test $R^2$')
-    plt.legend(['$\\alpha='+str(a)+'$' for a in alphas])
+    plt.legend(['$l1 ratio='+str(l1_ratio)+'$' for l1_ratio in l1_ratios])
 
     plt.subplot(122)
     plt.plot(n, c1, '.-', linewidth=1)
@@ -412,8 +412,8 @@ def plot_cv_results(r2=None, r2_relaxed=None, nonzeros=None, corrs=None, corrs_r
     plt.xscale('log')
     plt.xlabel('Number of non-zero predictors')
     plt.ylabel('Correlations')
-    plt.legend(alphas)
-    plt.legend(['$\\alpha='+str(a)+'$' for a in alphas])
+    plt.legend(l1_ratios)
+    plt.legend(['$l1 ratio='+str(l1_ratio)+'$' for l1_ratio in l1_ratios])
     plt.tight_layout()
 
 
