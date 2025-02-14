@@ -401,7 +401,7 @@ def plot_cv_results(r2=None, r2_relaxed=None, nonzeros=None, corrs=None, corrs_r
     plt.xscale('log')
     plt.xlabel('Number of non-zero predictors')
     plt.ylabel('Cross-validated test $R^2$')
-    plt.legend(['$l1 ratio='+str(l1_ratio)+'$' for l1_ratio in l1_ratios])
+    plt.legend(['$\ell_1 ratio='+str(l1_ratio)+'$' for l1_ratio in l1_ratios])
 
     plt.subplot(122)
     plt.plot(n, c1, '.-', linewidth=1)
@@ -413,7 +413,7 @@ def plot_cv_results(r2=None, r2_relaxed=None, nonzeros=None, corrs=None, corrs_r
     plt.xlabel('Number of non-zero predictors')
     plt.ylabel('Correlations')
     plt.legend(l1_ratios)
-    plt.legend(['$l1 ratio='+str(l1_ratio)+'$' for l1_ratio in l1_ratios])
+    plt.legend(['$\ell_1 ratio='+str(l1_ratio)+'$' for l1_ratio in l1_ratios])
     plt.tight_layout()
 
 
@@ -462,3 +462,103 @@ def nested_cv(X, Y, alphas, l1_ratios, rank=2, nfolds=10, n_inner_folds=10,
     print(f'\nAverage test R2: {np.mean(r2s):.2f}\n')
     return r2s
 
+###################################################
+# Cross-validation for elastic net reduced-rank regression
+def elastic_rrr_cv_honest(X, Y, l1_ratios = np.array([.25, .5, .75, 1]), alphas = np.array([.01, .1, 1]), 
+                   reps=1, folds=10, rank=2, seed=42, sparsity='row-wise', alphaRelaxed=None,
+                   preprocess=True):
+    n = X.shape[0]
+    r2 = np.zeros((folds, reps, len(alphas), len(l1_ratios))) * np.nan
+    r2_relaxed = np.zeros((folds, reps, len(alphas), len(l1_ratios))) * np.nan
+    corrs = np.zeros((folds, reps, len(alphas), len(l1_ratios), rank)) * np.nan
+    corrs_relaxed = np.zeros((folds, reps, len(alphas), len(l1_ratios), rank)) * np.nan
+    nonzero = np.zeros((folds, reps, len(alphas), len(l1_ratios))) * np.nan
+    nzs = np.zeros((folds, reps, len(alphas), len(l1_ratios), X.shape[1]), dtype='bool') * False
+    vxs = np.zeros((folds, reps, len(alphas), len(l1_ratios), X.shape[1])) * np.nan
+    vxs_relaxed = np.zeros((folds, reps, len(alphas), len(l1_ratios), X.shape[1])) * np.nan
+
+    # CV repetitions
+    np.random.seed(seed)
+    t = time.time()
+    for rep in range(reps):
+        print(rep+1, end='')
+        ind = np.random.permutation(n)
+        X = X[ind,:]
+        Y = Y[ind,:]
+        
+        # CV folds
+        for cvfold in range(folds):
+            print('.', end='')
+
+            indtest  = np.arange(cvfold*int(n/folds), (cvfold+1)*int(n/folds))
+            indtrain = np.setdiff1d(np.arange(n), indtest)
+            Xtrain = X[indtrain,:].copy()
+            Ytrain = Y[indtrain,:].copy()
+            Xtest  = X[indtest,:].copy()
+            Ytest  = Y[indtest,:].copy()
+
+            # Z-score normalization
+            if preprocess:
+                Xtrain_mean = np.mean(Xtrain, axis=0)
+                Xtrain_std = np.std(Xtrain, axis=0)
+                Xtrain -= Xtrain_mean
+                Xtrain /= Xtrain_std
+                Ytrain_mean = np.mean(Ytrain, axis=0)
+                Ytrain_std = np.std(Ytrain, axis=0)
+                Ytrain -= Ytrain_mean
+                Ytrain /= Ytrain_std
+
+                Xtest -= Xtrain_mean
+                Xtest /= Xtrain_std
+                Ytest -= Ytrain_mean
+                Ytest /= Ytrain_std
+
+            # loop over regularization parameters
+            for i,a in enumerate(alphas):    
+                for j,b in enumerate(l1_ratios):
+                    vx,vy = elastic_rrr(Xtrain, Ytrain, alpha=a, l1_ratio=b, rank=rank, sparsity=sparsity)                  
+                    vxs[cvfold, rep, i, j, :] = np.linalg.norm(vx, axis=1)
+
+                    nz = np.sum(np.abs(vx), axis=1) != 0
+                    nzs[cvfold, rep, i, j, :] = nz.astype('bool')
+                    if np.sum(nz) < rank:
+                        continue
+
+                    if np.allclose(np.std(Xtest @ vx, axis=0), 0):
+                        continue
+                    
+                    nonzero[cvfold, rep, i, j] = np.sum(nz)
+                    r2[cvfold, rep, i, j] = 1 - np.sum((Ytest - Xtest @ vx @ vy.T)**2) / np.sum(Ytest**2)
+                    for r in range(rank):
+                        corrs[cvfold, rep, i, j, r] = np.corrcoef(Xtest @ vx[:,r], Ytest @ vy[:,r], rowvar=False)[0,1]
+                        
+                    # Relaxation
+                    if alphaRelaxed:
+                        vxr,vyr = elastic_rrr(Xtrain[:,nz], Ytrain, alpha=alphaRelaxed, l1_ratio=0, rank=rank, sparsity=sparsity)
+                    else:
+                        vxr,vyr = elastic_rrr(Xtrain[:,nz], Ytrain, alpha=a, l1_ratio=0, rank=rank, sparsity=sparsity)
+                    if np.sum(nz)>=np.shape(vy)[1]:
+                        vx[nz,:] = vxr
+                        vy = vyr
+                    else:
+                        vx[nz,:][:,:np.sum(nz)] = vxr
+                        vx[nz,:][:,np.sum(nz):] = 0
+                        vy[:,:np.sum(nz)] = vyr
+                        vy[:,np.sum(nz):] = 0
+                    vxs_relaxed[cvfold, rep, i, j, :] = np.linalg.norm(vx, axis=1)
+
+                    if np.allclose(np.std(Xtest @ vx, axis=0), 0):
+                        continue
+
+                    r2_relaxed[cvfold, rep, i, j] = 1 - np.sum((Ytest - Xtest @ vx @ vy.T)**2) / np.sum(Ytest**2)
+                    for r in range(rank):
+                        corrs_relaxed[cvfold, rep, i, j, r] = np.corrcoef(Xtest @ vx[:,r], Ytest @ vy[:,r], rowvar=False)[0,1]
+                    
+        print(' ', end='')
+    
+    t = time.time() - t
+    m,s = divmod(t, 60)
+    h,m = divmod(m, 60)
+    print('Time: {}h {:2.0f}m {:2.0f}s'.format(h,m,s))
+    
+    return r2, r2_relaxed, nonzero, corrs, corrs_relaxed, nzs, vxs, vxs_relaxed
